@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="139e061a-6df2-4aef-a7df-9ec8eaad0954" name="KinD++">
+        <fileTransfer accessType="SFTP" host="10.0.0.5" port="22" sshConfigId="c662bfa0-5d8d-4249-82a7-55fce1a5b40c" sshConfig="ray@10.0.0.5:22 password">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>
