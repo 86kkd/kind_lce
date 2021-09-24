@@ -129,3 +129,7 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+Bovik_NIQE_SPL2013
+experiment
+CRM

@@ -1,26 +1,54 @@
 # coding: utf-8
 from __future__ import print_function
-import os, time, random
-import tensorflow as tf
-from PIL import Image
-import numpy as np
-from utils import *
-from model import *
-from glob import glob
+
 import argparse
+import os
+import random
+import time
+from glob import glob
+
+import tensorflow._api.v2.compat.v1 as tf
+
+tf.disable_v2_behavior()
+from tensorboardX import SummaryWriter
+
+from model import *
+from utils import *
+
+
+def load_model(sess, saver, ckpt_dir):
+    ckpt = tf.train.get_checkpoint_state(ckpt_dir)
+    if ckpt:
+        print('loaded ' + ckpt.model_checkpoint_path)
+        full_path = tf.train.latest_checkpoint(ckpt_dir)
+        try:
+            _global_step = int(full_path.split('/')[-1].split('-')[-1])
+        except ValueError:
+            _global_step = None
+        saver.restore(sess, full_path)
+        return True, _global_step
+    else:
+        print("[*] Failed to load model from %s" % ckpt_dir)
+        return False, 0
+
 
 parser = argparse.ArgumentParser(description='')
-parser.add_argument('--batch_size', dest='batch_size', type=int, default=10, help='number of samples in one batch')
+parser.add_argument('--batch_size', dest='batch_size', type=int, default=8, help='number of samples in one batch')
 parser.add_argument('--patch_size', dest='patch_size', type=int, default=48, help='patch size')
-parser.add_argument('--train_data_dir', dest='train_data_dir', default='./LOLdataset',
+parser.add_argument('--train_data_dir', dest='train_data_dir', default='/home/ray/data/LOLdataset_KinD',
                     help='directory for training inputs')
-parser.add_argument('--train_result_dir', dest='train_result_dir', default='./decom_net_train_result/',
-                    help='directory for decomnet training results')
+parser.add_argument('--sample_dir', type=str, default='./experiment/exp1/simple', help='batch size')
+parser.add_argument('--checkpoint_dir', type=str, default='./experiment/exp1/checkpoint',
+                    help='batch size')
+parser.add_argument('--log_dir', type=str, default="./experiment/exp1/logs")
 parser.add_argument('--learning_rate', dest='learning_rate', type=int, default=0.0001, help='learn rate')
 parser.add_argument('--epoch', dest='epoch', type=int, default=2500, help='epoch')
 parser.add_argument('--eval_every_epoch', dest='eval_every_epoch', type=int, default=500, help='eval_every-epoch')
 parser.add_argument('--cuda', dest='cuda', type=str, default='1', help='cpu,0,1')
 args = parser.parse_args()
+
+os.makedirs(args.log_dir, exist_ok=True)
+writer = SummaryWriter(logdir=args.log_dir)
 
 os.environ['CUDA_VISIBLE_DEVICES'] = args.cuda
 learning_rate = args.learning_rate
@@ -86,7 +114,6 @@ loss_Decom = 1 * recon_loss_high + 1 * recon_loss_low \
              + 0.009 * equal_R_loss + 0.2 * i_mutual_loss \
              + 0.15 * i_input_mutual_loss_high + 0.15 * i_input_mutual_loss_low
 
-###
 lr = tf.placeholder(tf.float32, name='learning_rate')
 
 optimizer = tf.train.AdamOptimizer(learning_rate=lr, name='AdamOptimizer')
@@ -98,96 +125,106 @@ saver_Decom = tf.train.Saver(var_list=var_Decom)
 print("[*] Initialize model successfully...")
 
 # load data
-###train_data
-train_low_data = []
-train_high_data = []
-train_low_data_names = glob(args.train_data_dir + 'low/*.png')
-train_low_data_names.sort()
-train_high_data_names = glob(args.train_data_dir + 'high/*.png')
-train_high_data_names.sort()
-assert len(train_low_data_names) == len(train_high_data_names)
-print('[*] Number of training data: %d' % len(train_low_data_names))
-for idx in range(len(train_low_data_names)):
-    low_im = load_images(train_low_data_names[idx])
-    train_low_data.append(low_im)
-    high_im = load_images(train_high_data_names[idx])
-    train_high_data.append(high_im)
-###eval_data
-eval_low_data = []
-eval_high_data = []
-eval_low_data_name = glob(os.path.join(data, 'eval15/low/*.png'))
-eval_low_data_name.sort()
-eval_high_data_name = glob('./LOLdataset/eval15/high/*.png*')
-eval_high_data_name.sort()
-for idx in range(len(eval_low_data_name)):
-    eval_low_im = load_images(eval_low_data_name[idx])
-    eval_low_data.append(eval_low_im)
-    eval_high_im = load_images(eval_high_data_name[idx])
-    eval_high_data.append(eval_high_im)
+# train_data
+train_decom_low_data = []
+train_decom_high_data = []
+train_decom_low_data_names = glob(os.path.join(data, 'our485/low/*.png'))
+train_decom_low_data_names.sort()
+train_decom_high_data_names = glob(os.path.join(data, 'our485/high/*.png'))
+train_decom_high_data_names.sort()
+assert len(train_decom_low_data_names) == len(train_decom_high_data_names) and len(train_decom_low_data_names) != 0
+print('[*] Number of training data: %d' % len(train_decom_low_data_names))
+for idx in range(len(train_decom_low_data_names)):
+    low_im = load_images(train_decom_low_data_names[idx])
+    train_decom_low_data.append(low_im)
+    high_im = load_images(train_decom_high_data_names[idx])
+    train_decom_high_data.append(high_im)
 
-sample_dir = args.train_result_dir
+# eval_data
+eval_decom_low_data = []
+eval_decom_high_data = []
+eval_decom_low_data_name = glob(os.path.join(data, 'eval15/low/*.png'))
+eval_decom_low_data_name.sort()
+eval_decom_high_data_name = glob(os.path.join(data, 'eval15/high/*.png'))
+eval_decom_high_data_name.sort()
+for idx in range(len(eval_decom_low_data_name)):
+    eval_low_im = load_images(eval_decom_low_data_name[idx])
+    eval_decom_low_data.append(eval_low_im)
+    eval_high_im = load_images(eval_decom_high_data_name[idx])
+    eval_decom_high_data.append(eval_high_im)
+
+sample_dir = os.path.join(args.sample_dir, 'decom_net_train_result')
 if not os.path.isdir(sample_dir):
     os.makedirs(sample_dir)
 
 train_phase = 'decomposition'
-numBatch = len(train_low_data) // int(batch_size)
+numBatch = len(train_decom_low_data) // int(batch_size)
 train_op = train_op_Decom
 train_loss = loss_Decom
 saver = saver_Decom
 
-checkpoint_dir = './checkpoint/decom_net_retrain/'
+checkpoint_dir = os.path.join(args.checkpoint_dir, 'decom_net_retrain')
 if not os.path.isdir(checkpoint_dir):
     os.makedirs(checkpoint_dir)
-ckpt = tf.train.get_checkpoint_state(checkpoint_dir)
-if ckpt:
-    print('loaded ' + ckpt.model_checkpoint_path)
-    saver.restore(sess, ckpt.model_checkpoint_path)
-else:
-    print('No decomnet pretrained model!')
 
-start_step = 0
-start_epoch = 0
-iter_num = 0
+start_epoch = None
+iter_num = None
+start_step = None
+
+load_model_status, global_step = load_model(sess, saver, checkpoint_dir)
+if load_model_status:
+    iter_num = global_step
+    start_epoch = global_step // numBatch
+    start_step = global_step % numBatch
+    print("[*] Model restore success!")
+else:
+    iter_num = 0
+    start_epoch = 0
+    start_step = 0
+    print("[*] Not find pretrained model!")
 
 print("[*] Start training for phase %s, with start epoch %d start iter %d : " % (train_phase, start_epoch, iter_num))
 start_time = time.time()
 image_id = 0
 for epoch in range(start_epoch, epoch):
+    loss_list = []
     for batch_id in range(start_step, numBatch):
         batch_input_low = np.zeros((batch_size, patch_size, patch_size, 3), dtype="float32")
         batch_input_high = np.zeros((batch_size, patch_size, patch_size, 3), dtype="float32")
         for patch_id in range(batch_size):
-            h, w, _ = train_low_data[image_id].shape
+            h, w, _ = train_decom_low_data[image_id].shape
             x = random.randint(0, h - patch_size)
             y = random.randint(0, w - patch_size)
             rand_mode = random.randint(0, 7)
             batch_input_low[patch_id, :, :, :] = data_augmentation(
-                train_low_data[image_id][x: x + patch_size, y: y + patch_size, :], rand_mode)
+                train_decom_low_data[image_id][x: x + patch_size, y: y + patch_size, :], rand_mode)
             batch_input_high[patch_id, :, :, :] = data_augmentation(
-                train_high_data[image_id][x: x + patch_size, y: y + patch_size, :], rand_mode)
-            image_id = (image_id + 1) % len(train_low_data)
+                train_decom_high_data[image_id][x: x + patch_size, y: y + patch_size, :], rand_mode)
+            image_id = (image_id + 1) % len(train_decom_low_data)
             if image_id == 0:
-                tmp = list(zip(train_low_data, train_high_data))
+                tmp = list(zip(train_decom_low_data, train_decom_high_data))
                 random.shuffle(tmp)
-                train_low_data, train_high_data = zip(*tmp)
+                train_decom_low_data, train_decom_high_data = zip(*tmp)
 
         _, loss = sess.run([train_op, train_loss], feed_dict={input_low: batch_input_low, \
                                                               input_high: batch_input_high, \
                                                               lr: learning_rate})
+        loss_list.append(loss)
         print("%s Epoch: [%2d] [%4d/%4d] time: %4.4f, loss: %.6f" \
               % (train_phase, epoch + 1, batch_id + 1, numBatch, time.time() - start_time, loss))
         iter_num += 1
+    writer.add_scalar("decom/loss", np.array(loss_list).mean(), global_step=epoch + 1)
     if (epoch + 1) % eval_every_epoch == 0:
         print("[*] Evaluating for phase %s / epoch %d..." % (train_phase, epoch + 1))
-        for idx in range(len(eval_low_data)):
-            input_low_eval = np.expand_dims(eval_low_data[idx], axis=0)
+        for idx in range(len(eval_decom_low_data)):
+            input_low_eval = np.expand_dims(eval_decom_low_data[idx], axis=0)
             result_1, result_2 = sess.run([output_R_low, output_I_low], feed_dict={input_low: input_low_eval})
             save_images(os.path.join(sample_dir, 'low_%d_%d.png' % (idx + 1, epoch + 1)), result_1, result_2)
-        for idx in range(len(eval_low_data)):
-            input_low_eval = np.expand_dims(eval_high_data[idx], axis=0)
+        for idx in range(len(eval_decom_low_data)):
+            input_low_eval = np.expand_dims(eval_decom_high_data[idx], axis=0)
             result_11, result_22 = sess.run([output_R_high, output_I_high], feed_dict={input_high: input_low_eval})
             save_images(os.path.join(sample_dir, 'high_%d_%d.png' % (idx + 1, epoch + 1)), result_11, result_22)
 
-    saver.save(sess, checkpoint_dir + 'model.ckpt')
+    saver.save(sess, os.path.join(checkpoint_dir, 'Decomposition_Net'), global_step=iter_num)
 
 print("[*] Finish training for phase %s." % train_phase)

@@ -3,33 +3,58 @@ from __future__ import print_function
 
 import argparse
 import os
-import time
 import random
-# from skimage import color
-from PIL import Image
-import tensorflow as tf
-import numpy as np
-from utils import *
-from model import *
+import time
 from glob import glob
 
+import tensorflow.compat.v1 as tf
+from tensorboardX import SummaryWriter
+
+from model import *
+from utils import *
+
+
+def load_model(sess, saver, ckpt_dir):
+    ckpt = tf.train.get_checkpoint_state(ckpt_dir)
+    if ckpt:
+        print('loaded ' + ckpt.model_checkpoint_path)
+        full_path = tf.train.latest_checkpoint(ckpt_dir)
+        try:
+            global_step = int(full_path.split('/')[-1].split('-')[-1])
+        except ValueError:
+            global_step = None
+        saver.restore(sess, full_path)
+        return True, global_step
+    else:
+        print("[*] Failed to load model from %s" % ckpt_dir)
+        return False, 0
+
+
 parser = argparse.ArgumentParser(description='illumination_adjustment_net need parameter')
-parser.add_argument('--batch_size', dest='batch_size', type=int, default=10, help='batch size')
+parser.add_argument('--batch_size', dest='batch_size', type=int, default=8, help='batch size')
 parser.add_argument('--patch_size', dest='patch_size', type=int, default=48, help='batch size')
-parser.add_argument('--data', dest='data', type=str, default='./LOLdataset', help='batch size')
+parser.add_argument('--data', dest='data', type=str, default='/home/ray/data/LOLdataset_KinD', help='batch size')
+parser.add_argument('--sample_dir', dest='data', type=str, default='./experiment/exp1/simple', help='batch size')
+parser.add_argument('--checkpoint_dir', dest='data', type=str, default='./experiment/exp1/checkpoint',
+                    help='batch size')
+parser.add_argument('--log_dir', type=str, default="./experiment/exp1/logs")
 parser.add_argument('--learning_rate', dest='learning_rate', type=int, default=0.0001, help='learn rate')
 parser.add_argument('--epoch', dest='epoch', type=int, default=2000, help='epoch')
 parser.add_argument('--eval_every_epoch', dest='eval_every_epoch', type=int, default=200, help='eval_every-epoch')
-parser.add_argument('--cuda',dest='cuda',type = str,default='1',help = 'cpu,0,1')
+parser.add_argument('--cuda', dest='cuda', type=str, default='1', help='cpu,0,1')
 args = parser.parse_args()
 
-os.environ['CUDA_VISIBLE_DEVICES']=args.cuda
+os.makedirs(args.log_dir, exist_ok=True)
+writer = SummaryWriter(logdir=args.log_dir)
+
+os.environ['CUDA_VISIBLE_DEVICES'] = args.cuda
 batch_size = args.batch_size
 patch_size = args.patch_size
 data = args.data
 learning_rate = args.learning_rate
 epoch = args.epoch
 eval_every_epoch = args.eval_every_epoch
+decom_net_ckpt_path = os.path.join(args.checkpoint_dir, "")
 
 sess = tf.Session()
 # the input of decomposition net
@@ -75,24 +100,24 @@ sess.run(tf.global_variables_initializer())
 print("[*] Initialize model successfully...")
 
 ### load data
-### Based on the decomposition net, we first get the decomposed reflectance maps 
+### Based on the decomposition net, we first get the decomposed reflectance maps
 ### and illumination maps, then train the adjust net.
-###train_data
-train_low_data = []
-train_high_data = []
-train_low_data_names = glob(os.path.join(data, 'our485/low/*.png'))
-train_low_data_names.sort()
-train_high_data_names = glob(os.path.join(data, 'our485/high/*.png'))
-train_high_data_names.sort()
-assert len(train_low_data_names) == len(train_high_data_names)
-print('[*] Number of training data: %d' % len(train_low_data_names))
-for idx in range(len(train_low_data_names)):
-    low_im = load_images(train_low_data_names[idx])
-    train_low_data.append(low_im)
-    high_im = load_images(train_high_data_names[idx])
-    train_high_data.append(high_im)
+### train_data
+train_illumin_low_data = []
+train_illumin_high_data = []
+train_illumin_low_data_names = glob(os.path.join(data, 'our485/low/*.png'))
+train_illumin_low_data_names.sort()
+train_illumin_high_data_names = glob(os.path.join(data, 'our485/high/*.png'))
+train_illumin_high_data_names.sort()
+assert len(train_illumin_low_data_names) == len(train_illumin_high_data_names)
+print('[*] Number of training data: %d' % len(train_illumin_low_data_names))
+for idx in range(len(train_illumin_low_data_names)):
+    low_im = load_images(train_illumin_low_data_names[idx])
+    train_illumin_low_data.append(low_im)
+    high_im = load_images(train_illumin_high_data_names[idx])
+    train_illumin_high_data.append(high_im)
 
-pre_decom_checkpoint_dir = './checkpoint/decom_model/'
+pre_decom_checkpoint_dir = decom_net_ckpt_path
 ckpt_pre = tf.train.get_checkpoint_state(pre_decom_checkpoint_dir)
 if ckpt_pre:
     print('loaded ' + ckpt_pre.model_checkpoint_path)
@@ -102,16 +127,16 @@ else:
 
 decomposed_low_i_data_480 = []
 decomposed_high_i_data_480 = []
-for idx in range(len(train_low_data)):
-    input_low = np.expand_dims(train_low_data[idx], axis=0)
+for idx in range(len(train_illumin_low_data)):
+    input_low = np.expand_dims(train_illumin_low_data[idx], axis=0)
     RR, II = sess.run([decom_output_R, decom_output_I], feed_dict={input_decom: input_low})
     RR0 = np.squeeze(RR)
     II0 = np.squeeze(II)
     print(RR0.shape, II0.shape)
     # decomposed_high_r_data_480.append(result_1_sq)
     decomposed_low_i_data_480.append(II0)
-for idx in range(len(train_high_data)):
-    input_high = np.expand_dims(train_high_data[idx], axis=0)
+for idx in range(len(train_illumin_high_data)):
+    input_high = np.expand_dims(train_illumin_high_data[idx], axis=0)
     RR2, II2 = sess.run([decom_output_R, decom_output_I], feed_dict={input_decom: input_high})
     RR02 = np.squeeze(RR2)
     II02 = np.squeeze(II2)
@@ -133,22 +158,29 @@ train_op = train_op_adjust
 train_loss = loss_adjust
 saver = saver_adjust
 
-checkpoint_dir = './checkpoint/illumination_adjust_net_retrain/'
+checkpoint_dir = os.path.join(args.checkpoint_dir, 'illumination_adjust_net_retrain')
 if not os.path.isdir(checkpoint_dir):
     os.makedirs(checkpoint_dir)
-ckpt = tf.train.get_checkpoint_state(checkpoint_dir)
-if ckpt:
-    print('loaded ' + ckpt.model_checkpoint_path)
-    saver.restore(sess, ckpt.model_checkpoint_path)
-else:
-    print("No adjustment net pre model!")
 
-start_step = 0
-start_epoch = 0
-iter_num = 0
+start_epoch = None
+iter_num = None
+start_step = None
+
+load_model_status, global_step = load_model(sess, saver, checkpoint_dir)
+if load_model_status:
+    iter_num = global_step
+    start_epoch = global_step // numBatch
+    start_step = global_step % numBatch
+    print("[*] Model restore success!")
+else:
+    iter_num = 0
+    start_epoch = 0
+    start_step = 0
+    print("[*] Not find pretrained model!")
+
 print("[*] Start training for phase %s, with start epoch %d start iter %d : " % (train_phase, start_epoch, iter_num))
 
-sample_dir = './illumination_adjust_net_train/'
+sample_dir = os.path.join(args.sample_dir, 'illumination_adjust_net_train/')
 if not os.path.isdir(sample_dir):
     os.makedirs(sample_dir)
 
@@ -156,6 +188,7 @@ start_time = time.time()
 image_id = 0
 
 for epoch in range(start_epoch, epoch):
+    loss_list = []
     for batch_id in range(start_step, numBatch):
         batch_input_low_i_ratio = np.zeros((batch_size, patch_size, patch_size, 1), dtype="float32")
         batch_input_high_i_ratio = np.zeros((batch_size, patch_size, patch_size, 1), dtype="float32")
@@ -186,7 +219,7 @@ for epoch in range(start_epoch, epoch):
             # print(ratio)
             i_low_data_ratio = np.ones([patch_size, patch_size]) * (1 / ratio + 0.0001)
             i_low_ratio_expand = np.expand_dims(i_low_data_ratio, axis=2)
-            i_high_data_ratio = np.ones([patch_size, patch_size]) * (ratio)
+            i_high_data_ratio = np.ones([patch_size, patch_size]) * ratio
             i_high_ratio_expand = np.expand_dims(i_high_data_ratio, axis=2)
             batch_input_low_i_ratio[patch_id, :, :, :] = i_low_ratio_expand
             batch_input_high_i_ratio[patch_id, :, :, :] = i_high_ratio_expand
@@ -209,9 +242,12 @@ for epoch in range(start_epoch, epoch):
                            feed_dict={input_low_i: input_low_i_rand, input_low_i_ratio: input_low_i_rand_ratio, \
                                       input_high_i: input_high_i_rand, \
                                       lr: learning_rate})
+        loss_list.append(loss)
+
         print("%s Epoch: [%2d] [%4d/%4d] time: %4.4f, loss: %.6f" \
               % (train_phase, epoch + 1, batch_id + 1, numBatch, time.time() - start_time, loss))
         iter_num += 1
+    writer.add_scalar("illumin/loss", tf.reduce_mean(loss_list), global_step=epoch + 1)
     if (epoch + 1) % eval_every_epoch == 0:
         print("[*] Evaluating for phase %s / epoch %d..." % (train_phase, epoch + 1))
 
@@ -231,6 +267,6 @@ for epoch in range(start_epoch, epoch):
             save_images(os.path.join(sample_dir, 'h_eval_%d_%d_%5f.png' % (epoch + 1, rand_idx + 1, rand_ratio)),
                         input_uu_i, result_1)
 
-    saver.save(sess, checkpoint_dir + 'model.ckpt')
+    saver.save(sess, os.path.join(checkpoint_dir, 'Illumination_Adjustment_Net'), global_step=iter_num)
 
 print("[*] Finish training for phase %s." % train_phase)

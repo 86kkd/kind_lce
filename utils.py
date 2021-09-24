@@ -1,6 +1,6 @@
 import numpy as np
 from PIL import Image
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import scipy.stats as st
 from skimage import io,data,color
 from functools import reduce
@@ -140,18 +140,18 @@ def load_images(file):
 def load_images_no_norm(file):
     im = Image.open(file)
     img = np.array(im, dtype="float32") / 255.0
-    
+
     return img
 
 def bright_channel_2(input_img):
-    h, w = input_img.shape[:2]  
-    I = input_img  
-    res = np.minimum(I  , I[[0]+range(h-1)  , :])  
-    res = np.minimum(res, I[range(1,h)+[h-1], :])  
-    I = res  
-    res = np.minimum(I  , I[:, [0]+range(w-1)])  
+    h, w = input_img.shape[:2]
+    I = input_img
+    res = np.minimum(I  , I[[0]+range(h-1)  , :])
+    res = np.minimum(res, I[range(1,h)+[h-1], :])
+    I = res
+    res = np.minimum(I  , I[:, [0]+range(w-1)])
     res = np.minimum(res, I[:, range(1,w)+[w-1]])
-    return res  
+    return res
 
 def bright_channel(input_img):
     r = input_img[:,:,0]
@@ -227,7 +227,7 @@ def load_images_and_a_and_norm(file):
 def load_images_and_a_003(file):
     im = Image.open(file)
     img = np.array(im, dtype="float32") / 255.0
-    
+
     img_max = np.max(img)
     img_min = np.min(img)
     img_norm = np.float32((img - img_min) / np.maximum((img_max - img_min), 0.001))
