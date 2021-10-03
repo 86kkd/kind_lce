@@ -5,7 +5,7 @@ import os
 
 import numpy as np
 
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 import time
 import random
 import argparse
@@ -42,10 +42,9 @@ parser.add_argument('--data', dest='data', type=str,
                     default='/home/ray/data/LOLdataset_KinD',
                     help='batch size')
 parser.add_argument('--log_dir', type=str, default="./experiment/exp1/logs")
-parser.add_argument('--sample_dir', dest='data', type=str, default='./experiment/exp1/simple', help='batch size')
-parser.add_argument('--checkpoint_dir', dest='data', type=str, default='./experiment/exp1/checkpoint',
-                    help='batch size')
-parser.add_argument('--cuda', dest='cuda', type=str, default='1', help='cpu,0,1')
+parser.add_argument('--sample_dir', type=str, default='./experiment/exp1/simple')
+parser.add_argument('--checkpoint_dir', type=str, default='./experiment/exp1/checkpoint')
+parser.add_argument('--cuda', dest='cuda', type=str, default='0', help='cpu,0,1')
 parser.add_argument('--eval_every_epoch', dest='eval_every_epoch', type=int, default=150, help='eval_every-epoch')
 args = parser.parse_args()
 
@@ -147,13 +146,14 @@ for idx in range(len(eval_high_data_name)):
     eval_high_data.append(eval_high_im)
     # print(eval_high_im.shape)
 
-pre_checkpoint_dir = './checkpoint/decom_model/'
+# pre_checkpoint_dir = './checkpoint/decom_net_retrain'
+pre_checkpoint_dir = os.path.join(args.checkpoint_dir, "decom_net_retrain")
 ckpt_pre = tf.train.get_checkpoint_state(pre_checkpoint_dir)
 if ckpt_pre:
-    print('loaded ' + ckpt_pre.model_checkpoint_path)
+    print('[*] loaded ' + ckpt_pre.model_checkpoint_path)
     saver_Decom.restore(sess, ckpt_pre.model_checkpoint_path)
 else:
-    print('No pre_checkpoint!')
+    print('[*] No decom pre_checkpoint!', pre_checkpoint_dir)
 
 train_restoration_low_r_data_480 = []
 train_restoration_low_i_data_480 = []
@@ -285,16 +285,17 @@ for epoch in range(start_epoch, epoch):
                     zip(train_restoration_low_r_data, train_restoration_low_i_data, train_restoration_high_r_data))
                 random.shuffle(list(tmp))
                 train_restoration_low_r_data, train_restoration_low_i_data, train_restoration_high_r_data = zip(*tmp)
-
+        _learning_rate = lr_schedule(epoch)
         _, loss = sess.run([train_op, train_loss],
                            feed_dict={input_low_r: batch_input_low_r, input_low_i: batch_input_low_i, \
                                       input_high: batch_input_high, \
-                                      training: True, lr: lr_schedule(epoch)})
+                                      training: True, lr:_learning_rate})
         loss_list.append(loss)
         print("%s Epoch: [%2d] [%4d/%4d] time: %4.4f, loss: %.6f" \
               % (train_phase, epoch + 1, batch_id + 1, numBatch, time.time() - start_time, loss))
         iter_num += 1
     writer.add_scalar("reflectance/loss", np.array(loss_list).mean(), global_step=epoch + 1)
+    writer.add_scalar("reflectance/learning_rate", _learning_rate, global_step=epoch + 1)
 
     if (epoch + 1) % eval_every_epoch == 0:
         print("[*] Evaluating for phase %s / epoch %d..." % (train_phase, epoch + 1))
@@ -320,6 +321,6 @@ for epoch in range(start_epoch, epoch):
             save_images(os.path.join(sample_dir, 'eval_bmp_%d_%d.png' % (idx + 101, epoch + 1)), result_1)
 
         global_step = epoch
-        saver.save(sess, os.path.join(checkpoint_dir, 'Reflectance_Restoration_Net'), global_step=global_step)
+        saver.save(sess, os.path.join(checkpoint_dir, 'Reflectance_Restoration_Net.ckpt'), global_step=global_step)
 
 print("[*] Finish training for phase %s." % train_phase)

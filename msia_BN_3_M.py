@@ -6,7 +6,8 @@ import tf_slim as slim
 
 def illu_attention_3_M(input_feature, input_i, name):
     kernel_size = 3
-    kernel_initializer = tf.contrib.layers.variance_scaling_initializer()
+    kernel_initializer = tf.variance_scaling_initializer()
+
     with tf.variable_scope(name):
         concat = tf.layers.conv2d(input_i,
                                   filters=1,

@@ -34,10 +34,9 @@ parser = argparse.ArgumentParser(description='illumination_adjustment_net need p
 parser.add_argument('--batch_size', dest='batch_size', type=int, default=8, help='batch size')
 parser.add_argument('--patch_size', dest='patch_size', type=int, default=48, help='batch size')
 parser.add_argument('--data', type=str, default='/home/ray/data/LOLdataset_KinD', help='batch size')
-parser.add_argument('--sample_dir', type=str, default='./experiment/exp1/simple', help='batch size')
-parser.add_argument('--checkpoint_dir', type=str, default='./experiment/exp1/checkpoint',
-                    help='batch size')
-parser.add_argument('--log_dir', type=str, default="./experiment/exp1/logs")
+parser.add_argument('--sample_dir', type=str, default='./experiment/exp2/simple', help='batch size')
+parser.add_argument('--checkpoint_dir', type=str, default='./experiment/exp2/checkpoint')
+parser.add_argument('--log_dir', type=str, default="./experiment/exp2/logs")
 parser.add_argument('--learning_rate', dest='learning_rate', type=int, default=0.0001, help='learn rate')
 parser.add_argument('--epoch', dest='epoch', type=int, default=2000, help='epoch')
 parser.add_argument('--eval_every_epoch', dest='eval_every_epoch', type=int, default=200, help='eval_every-epoch')
@@ -61,7 +60,6 @@ sess = tf.Session()
 input_decom = tf.placeholder(tf.float32, [None, None, None, 3], name='input_decom')
 # the input of illumination adjustment net
 input_low_i = tf.placeholder(tf.float32, [None, None, None, 1], name='input_low_i')
-input_low_i_ratio = tf.placeholder(tf.float32, [None, None, None, 1], name='input_low_i_ratio')
 input_high_i = tf.placeholder(tf.float32, [None, None, None, 1], name='input_high_i')
 
 [R_decom, I_decom] = DecomNet(input_decom)
@@ -69,7 +67,7 @@ input_high_i = tf.placeholder(tf.float32, [None, None, None, 1], name='input_hig
 decom_output_R = R_decom
 decom_output_I = I_decom
 # the output of illumination adjustment net
-output_i = Illumination_adjust_net(input_low_i, input_low_i_ratio)
+output_i, A = Illumination_adjust_curve_net(input_low_i)
 
 
 # define loss
@@ -81,10 +79,23 @@ def grad_loss(input_i_low, input_i_high):
     return grad_loss_all
 
 
+def color_loss(x, name=None):
+    with tf.name_scope(name, "color_loss"):
+        mean_rgb = tf.reduce_mean(x, [1, 2], keepdims=True)
+        # mean_r, mean_g, mean_b = tf.split(mean_rgb, num_or_size_splits=1, axis=3)
+        mean_r, mean_g, mean_b = mean_rgb[..., 0], mean_rgb[..., 1], mean_rgb[..., 2]
+
+        d_rg = tf.square(mean_r - mean_g)
+        d_rb = tf.square(mean_r - mean_b)
+        d_gb = tf.square(mean_b - mean_g)
+        d_sum = tf.square(d_rg) + tf.square(d_rb) + tf.square(d_gb)
+        return tf.sqrt(d_sum)
+
+
 loss_grad = grad_loss(output_i, input_high_i)
 loss_square = tf.reduce_mean(tf.square(output_i - input_high_i))
-
-loss_adjust = loss_square + loss_grad
+loss_tv = tf.reduce_mean(tf.image.total_variation(A))
+loss_adjust = loss_square + loss_grad + 10 * loss_tv
 
 lr = tf.placeholder(tf.float32, name='learning_rate')
 
@@ -102,7 +113,7 @@ print("[*] Initialize model successfully...")
 # load data
 # Based on the decomposition net, we first get the decomposed reflectance maps
 # and illumination maps, then train the adjust net.
-# train_data
+# train_datatrain_illumin_low_data = []
 
 train_illumin_low_data = []
 train_illumin_high_data = []
@@ -121,10 +132,10 @@ for idx in range(len(train_illumin_low_data_names)):
 pre_decom_checkpoint_dir = decom_net_ckpt_path
 ckpt_pre = tf.train.get_checkpoint_state(pre_decom_checkpoint_dir)
 if ckpt_pre:
-    print('[*] loaded ' + ckpt_pre.model_checkpoint_path)
+    print('loaded ' + ckpt_pre.model_checkpoint_path)
     saver_Decom.restore(sess, ckpt_pre.model_checkpoint_path)
 else:
-    print('[*] No pre_decom_net checkpoint!')
+    print('No pre_decom_net checkpoint!')
 
 decomposed_low_i_data_480 = []
 decomposed_high_i_data_480 = []
@@ -159,7 +170,7 @@ train_op = train_op_adjust
 train_loss = loss_adjust
 saver = saver_adjust
 
-checkpoint_dir = os.path.join(args.checkpoint_dir, 'illumination_adjust_net_retrain')
+checkpoint_dir = os.path.join(args.checkpoint_dir, 'illumination_adjust_curve_net_add_sigmoid')
 if not os.path.isdir(checkpoint_dir):
     os.makedirs(checkpoint_dir)
 
@@ -181,7 +192,7 @@ else:
 
 print("[*] Start training for phase %s, with start epoch %d start iter %d : " % (train_phase, start_epoch, iter_num))
 
-sample_dir = os.path.join(args.sample_dir, 'illumination_adjust_net_train/')
+sample_dir = os.path.join(args.sample_dir, 'illumination_adjust_curve_2/')
 if not os.path.isdir(sample_dir):
     os.makedirs(sample_dir)
 
@@ -240,7 +251,7 @@ for epoch in range(start_epoch, epoch):
             image_id = (image_id + 1) % len(train_adjust_low_i_data)
 
         _, loss = sess.run([train_op, train_loss],
-                           feed_dict={input_low_i: input_low_i_rand, input_low_i_ratio: input_low_i_rand_ratio, \
+                           feed_dict={input_low_i: input_low_i_rand, \
                                       input_high_i: input_high_i_rand, \
                                       lr: learning_rate})
         loss_list.append(loss)
@@ -264,7 +275,7 @@ for epoch in range(start_epoch, epoch):
             input_low_eval_ii_ratio = np.expand_dims(input_low_eval_i_ratio, axis=3)
 
             result_1 = sess.run(output_i,
-                                feed_dict={input_low_i: input_low_eval_ii, input_low_i_ratio: input_low_eval_ii_ratio})
+                                feed_dict={input_low_i: input_low_eval_ii})
             save_images(os.path.join(sample_dir, 'h_eval_%d_%d_%5f.png' % (epoch + 1, rand_idx + 1, rand_ratio)),
                         input_uu_i, result_1)
 

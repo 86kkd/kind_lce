@@ -1,7 +1,6 @@
 import tensorflow.compat.v1 as tf
 
 tf.disable_v2_behavior()
-import tf_slim as slim
 from msia_BN_3_M import *
 
 
@@ -83,4 +82,35 @@ def Illumination_adjust_net(input_i, input_ratio, isInferenced=False):
         conv4 = slim.conv2d(conv3, 1, [3, 3], rate=1, activation_fn=lrelu, scope='conv_4')
 
         L_enhance = tf.sigmoid(conv4)
+        print(L_enhance.shape)
     return L_enhance
+
+
+def Illumination_adjust_curve_net(x):
+    with tf.variable_scope('I_enhance_Net', reuse=tf.AUTO_REUSE):
+        x1 = slim.conv2d(x, 32, [3, 3], rate=1, activation_fn=lrelu, padding='same', stride=1, scope='conv_1')
+        x2 = slim.conv2d(x1, 32, [3, 3], rate=1, activation_fn=lrelu, padding='same', stride=1, scope='conv_2')
+        x3 = slim.conv2d(x2, 32, [3, 3], rate=1, activation_fn=lrelu, padding='same', stride=1, scope='conv_3')
+        x4 = slim.conv2d(x3, 32, [3, 3], rate=1, activation_fn=lrelu, padding='same', stride=1, scope='conv_4')
+
+        x5 = slim.conv2d(tf.concat([x3, x4], 3), 32, [3, 3], rate=1, activation_fn=lrelu, padding='same', stride=1,
+                         scope='conv_5')
+        x6 = slim.conv2d(tf.concat([x2, x5], 3), 32, [3, 3], rate=1, activation_fn=lrelu, padding='same', stride=1,
+                         scope='conv_6')
+        xr = slim.conv2d(tf.concat([x1, x6], 3), 8, [3, 3], rate=1, activation_fn=tf.nn.tanh, padding='same', stride=1,
+                         scope='conv_7')
+
+        # print(xr.shape, len(tf.split(xr, 8, axis=3)))
+        r1, r2, r3, r4, r5, r6, r7, r8 = tf.split(xr, 8, axis=3)
+
+        x = x + r1 * (tf.pow(x, 2) - x)
+        x = x + r2 * (tf.pow(x, 2) - x)
+        x = x + r3 * (tf.pow(x, 2) - x)
+        enhance_image_1 = x + r4 * (tf.pow(x, 2) - x)
+        x = enhance_image_1 + r5 * (tf.pow(enhance_image_1, 2) - enhance_image_1)
+        x = x + r6 * (tf.pow(x, 2) - x)
+        x = x + r7 * (tf.pow(x, 2) - x)
+        enhance_image = x + r8 * (tf.pow(x, 2) - x)
+        r = tf.concat([r1, r2, r3, r4, r5, r6, r7, r8], 1)
+        L_enhance = tf.sigmoid(enhance_image)
+    return L_enhance, r

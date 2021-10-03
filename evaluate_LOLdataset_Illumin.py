@@ -13,7 +13,7 @@ from utils import *
 
 parser = argparse.ArgumentParser(description='')
 
-parser.add_argument('--save_dir', dest='save_dir', default='./experiment/exp2/test_results',
+parser.add_argument('--save_dir', dest='save_dir', default='./experiment/exp2/test_results_add_sigmoid',
                     help='directory for testing outputs')
 parser.add_argument('--test_dir', dest='test_dir', default='/home/ray/data/LOLdataset/eval15',
                     help='directory for testing inputs')
@@ -26,13 +26,12 @@ training = tf.placeholder_with_default(False, shape=(), name='training')
 input_decom = tf.placeholder(tf.float32, [None, None, None, 3], name='input_decom')
 input_low_r = tf.placeholder(tf.float32, [None, None, None, 3], name='input_low_r')
 input_low_i = tf.placeholder(tf.float32, [None, None, None, 1], name='input_low_i')
-input_low_i_ratio = tf.placeholder(tf.float32, [None, None, None, 1], name='input_low_i_ratio')
 
 [R_decom, I_decom] = DecomNet(input_decom)
 decom_output_R = R_decom
 decom_output_I = I_decom
 output_r = Restoration_net(input_low_r, input_low_i, training)
-output_i = Illumination_adjust_net(input_low_i, input_low_i_ratio)
+output_i, A = Illumination_adjust_curve_net(input_low_i)
 
 # load pretrained model parameters
 var_Decom = [var for var in tf.trainable_variables() if 'DecomNet' in var.name]
@@ -47,31 +46,32 @@ saver_Decom = tf.train.Saver(var_list=var_Decom)
 saver_adjust = tf.train.Saver(var_list=var_adjust)
 saver_restoration = tf.train.Saver(var_list=var_restoration)
 
-decom_checkpoint_dir = os.path.join(args.checkpoint_dir, './checkpoint/decom_model/')
+decom_checkpoint_dir = os.path.join(args.checkpoint_dir, 'decom_net_retrain')
 ckpt_pre = tf.train.get_checkpoint_state(decom_checkpoint_dir)
 if ckpt_pre:
-    print('loaded ' + ckpt_pre.model_checkpoint_path)
+    print('[*] loaded ' + ckpt_pre.model_checkpoint_path)
     saver_Decom.restore(sess, ckpt_pre.model_checkpoint_path)
 else:
-    print('No decomnet pretrained model!')
+    print('[*] No decomnet pretrained model!')
 
-checkpoint_dir_adjust = os.path.join(args.checkpoint_dir, './checkpoint/illu_model/')
+checkpoint_dir_adjust = os.path.join(args.checkpoint_dir, 'illumination_adjust_curve_net_add_sigmoid')
 ckpt_adjust = tf.train.get_checkpoint_state(checkpoint_dir_adjust)
 if ckpt_adjust:
-    print('loaded ' + ckpt_adjust.model_checkpoint_path)
+    print('[*] loaded ' + ckpt_adjust.model_checkpoint_path)
     saver_adjust.restore(sess, ckpt_adjust.model_checkpoint_path)
 else:
-    print("No adjust net pretrained model!")
+    print("[*] No adjust net pretrained model!")
 
-checkpoint_dir_restoration = os.path.join(args.checkpoint_dir, './checkpoint/restoration_model/')
+checkpoint_dir_restoration = os.path.join(args.checkpoint_dir, 'new_restoration_retrain')
 ckpt = tf.train.get_checkpoint_state(checkpoint_dir_restoration)
 if ckpt:
-    print('loaded ' + ckpt.model_checkpoint_path)
+    print('[*] loaded ' + ckpt.model_checkpoint_path)
     saver_restoration.restore(sess, ckpt.model_checkpoint_path)
 else:
-    print("No restoration net pretrained model!")
+    print("[*] No restoration net pretrained model!")
 
-### load eval data
+# load eval data
+
 eval_low_data = []
 eval_img_name = []
 eval_low_data_name = glob(os.path.join(args.test_dir, 'low/*.png'))
@@ -83,7 +83,7 @@ for idx in range(len(eval_low_data_name)):
     eval_img_name.append(name)
     eval_low_im = load_images(eval_low_data_name[idx])
     eval_low_data.append(eval_low_im)
-    print(eval_low_im.shape)
+    # print(eval_low_im.shape)
 
 # To get better results,
 # the illumination adjustment ratio is computed based on the decom_i_high,
@@ -103,7 +103,7 @@ if not os.path.isdir(sample_dir):
 print("Start evalating!")
 start_time = time.time()
 for idx in range(len(eval_low_data)):
-    print(idx)
+    # print(idx)
     name = eval_img_name[idx]
     print('Evaluate image %s' % name)
     input_low = eval_low_data[idx]
@@ -127,7 +127,8 @@ for idx in range(len(eval_low_data)):
     i_low_ratio_expand = np.expand_dims(i_low_data_ratio, axis=2)
     i_low_ratio_expand2 = np.expand_dims(i_low_ratio_expand, axis=0)
 
-    adjust_i = sess.run(output_i, feed_dict={input_low_i: decom_i_low, input_low_i_ratio: i_low_ratio_expand2})
+    adjust_i = sess.run(output_i, feed_dict={input_low_i: decom_i_low})
+    print(adjust_i.shape, "==" * 20)
     fusion = restoration_r * adjust_i
 
     save_images(os.path.join(sample_dir, '%s_kindle_v2.png' % name), fusion)

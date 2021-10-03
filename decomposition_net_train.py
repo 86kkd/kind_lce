@@ -19,7 +19,7 @@ from utils import *
 def load_model(sess, saver, ckpt_dir):
     ckpt = tf.train.get_checkpoint_state(ckpt_dir)
     if ckpt:
-        print('loaded ' + ckpt.model_checkpoint_path)
+        print('[*] loaded ' + ckpt.model_checkpoint_path)
         full_path = tf.train.latest_checkpoint(ckpt_dir)
         try:
             _global_step = int(full_path.split('/')[-1].split('-')[-1])
@@ -225,6 +225,6 @@ for epoch in range(start_epoch, epoch):
             result_11, result_22 = sess.run([output_R_high, output_I_high], feed_dict={input_high: input_low_eval})
             save_images(os.path.join(sample_dir, 'high_%d_%d.png' % (idx + 1, epoch + 1)), result_11, result_22)
 
-    saver.save(sess, os.path.join(checkpoint_dir, 'Decomposition_Net'), global_step=iter_num)
+    saver.save(sess, os.path.join(checkpoint_dir, 'Decomposition_Net.ckpt'), global_step=iter_num)
 
 print("[*] Finish training for phase %s." % train_phase)
