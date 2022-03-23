@@ -6,23 +6,26 @@ import os
 import time
 from glob import glob
 
-from skimage import color, filters
 import tensorflow.compat.v1 as tf
+from skimage import filters
+
 from model import *
 from utils import *
 
 parser = argparse.ArgumentParser(description='')
 
-parser.add_argument('--save_dir', dest='save_dir', default='./experiment/exp1/test_results',
+parser.add_argument('--save_dir', dest='save_dir', default='./experiment/exp2/simple/illumination_adjust_curve_net_true',
                     help='directory for testing outputs')
-parser.add_argument('--test_dir', dest='test_dir', default='/home/ray/data/LOLdataset/eval15',
+parser.add_argument('--test_dir', dest='test_dir', default='/home/ray/data/LOLdataset/eval15/low',
                     help='directory for testing inputs')
-parser.add_argument("--checkpoint_dir", default='./experiment/exp1/checkpoint')
-parser.add_argument('--adjustment', dest='adjustment', default=False, help='whether to adjust illumination')
+# parser.add_argument("--checkpoint_dir", default='./experiment/exp1/checkpoint')
+parser.add_argument("--checkpoint_dir", default='./checkpoint')
+parser.add_argument('--adjustment', dest='adjustment', default=True, help='whether to adjust illumination')
 parser.add_argument('--ratio', dest='ratio', default=5.0, help='ratio for illumination adjustment')
+parser.add_argument("--cuda", default="-1")
 
 args = parser.parse_args()
-
+os.environ['CUDA_VISIBLE_DEVICES'] = args.cuda
 sess = tf.Session()
 training = tf.placeholder_with_default(False, shape=(), name='training')
 input_decom = tf.placeholder(tf.float32, [None, None, None, 3], name='input_decom')
@@ -51,6 +54,7 @@ saver_Decom = tf.train.Saver(var_list=var_Decom)
 saver_adjust = tf.train.Saver(var_list=var_adjust)
 saver_restoration = tf.train.Saver(var_list=var_restoration)
 
+# decom_checkpoint_dir = os.path.join(args.checkpoint_dir, 'decom_net_retrain')
 decom_checkpoint_dir = os.path.join(args.checkpoint_dir, 'decom_model')
 ckpt_pre = tf.train.get_checkpoint_state(decom_checkpoint_dir)
 if ckpt_pre:
@@ -59,7 +63,8 @@ if ckpt_pre:
 else:
     print('No decomnet checkpoint!')
 
-checkpoint_dir_adjust = os.path.join(args.checkpoint_dir, 'illu_model')
+# checkpoint_dir_adjust = os.path.join(args.checkpoint_dir, 'illu_model')
+checkpoint_dir_adjust = "/home/ray/workspace/PommesPeter/lowlight-enhancement-research/KinD_plus/experiment/exp2/checkpoint/illumination_adjust_curve_net"
 ckpt_adjust = tf.train.get_checkpoint_state(checkpoint_dir_adjust)
 if ckpt_adjust:
     print('loaded ' + ckpt_adjust.model_checkpoint_path)
@@ -67,7 +72,8 @@ if ckpt_adjust:
 else:
     print("No adjust pre model!")
 
-checkpoint_dir_restoration = os.path.join(args.checkpoint_dir, 'restoration_model')
+# checkpoint_dir_restoration = os.path.join(args.checkpoint_dir, 'new_restoration_retrain')
+checkpoint_dir_restoration = "/home/ray/workspace/PommesPeter/lowlight-enhancement-research/KinD_plus/experiment/exp1/checkpoint/new_restoration_retrain"
 ckpt = tf.train.get_checkpoint_state(checkpoint_dir_restoration)
 if ckpt:
     print('loaded ' + ckpt.model_checkpoint_path)
@@ -78,7 +84,7 @@ else:
 ###load eval data
 eval_low_data = []
 eval_img_name = []
-eval_low_data_name = glob(args.test_dir + '*')
+eval_low_data_name = glob(os.path.join(args.test_dir, '*.*'))
 eval_low_data_name.sort()
 for idx in range(len(eval_low_data_name)):
     [_, name] = os.path.split(eval_low_data_name[idx])
@@ -86,13 +92,13 @@ for idx in range(len(eval_low_data_name)):
     name = name[:name.find('.')]
     eval_img_name.append(name)
     eval_low_im = load_images(eval_low_data_name[idx])
-    print(eval_low_im.shape)
+    # print(eval_low_im.shape)
     h, w, c = eval_low_im.shape
     # the size of test image H and W need to be multiple of 4, if it is not a multiple of 4, we will discard some border pixels.
     h_tmp = h % 4
     w_tmp = w % 4
     eval_low_im_resize = eval_low_im[0:h - h_tmp, 0:w - w_tmp, :]
-    print(eval_low_im_resize.shape)
+    # print(eval_low_im_resize.shape)
     eval_low_data.append(eval_low_im_resize)
 
 sample_dir = args.save_dir
@@ -102,7 +108,7 @@ if not os.path.isdir(sample_dir):
 print("Start evalating!")
 start_time = time.time()
 for idx in range(len(eval_low_data)):
-    print(idx)
+    # print(idx)
     name = eval_img_name[idx]
     input_low = eval_low_data[idx]
     input_low_eval = np.expand_dims(input_low, axis=0)
@@ -112,7 +118,7 @@ for idx in range(len(eval_low_data)):
     restoration_r = sess.run(output_r, feed_dict={input_low_r: decom_r_low, input_low_i: decom_i_low, training: False})
     ### change the ratio to get different exposure level, the value can be 0-5.0
     ratio = float(args.ratio)
-    i_low_data_ratio = np.ones([h, w]) * (ratio)
+    i_low_data_ratio = np.ones([h, w]) * ratio
     i_low_ratio_expand = np.expand_dims(i_low_data_ratio, axis=2)
     i_low_ratio_expand2 = np.expand_dims(i_low_ratio_expand, axis=0)
     adjust_i = sess.run(output_i, feed_dict={input_low_i: decom_i_low, input_low_i_ratio: i_low_ratio_expand2})

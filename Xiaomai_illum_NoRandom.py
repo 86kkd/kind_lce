@@ -53,7 +53,7 @@ def load_model(sess, saver, ckpt_dir):
 
 
 parser = argparse.ArgumentParser(description='illumination_adjustment_net need parameter')
-parser.add_argument('--batch_size', dest='batch_size', type=int, default=8, help='batch size')
+parser.add_argument('--batch_size', dest='batch_size', type=int, default=10, help='batch size')
 parser.add_argument('--patch_size', dest='patch_size', type=int, default=48, help='batch size')
 parser.add_argument('--data', type=str, default='/home/ray/data/LOLdataset_KinD', help='batch size')
 parser.add_argument('--sample_dir', type=str, default='./experiment/exp2/simple', help='batch size')
@@ -65,7 +65,7 @@ parser.add_argument('--eval_every_epoch', dest='eval_every_epoch', type=int, def
 parser.add_argument('--cuda', dest='cuda', type=str, default='1', help='cpu,0,1')
 args = parser.parse_args()
 
-name = "illumination_adjust_curve_net_add_sigmoid_tvlossweight5"
+name = "illumination_adjust_curve_net_global_rm_del_rotate_no_random"
 os.makedirs(args.log_dir, exist_ok=True)
 writer = SummaryWriter(logdir=os.path.join(args.log_dir, name))
 
@@ -83,6 +83,7 @@ sess = tf.Session()
 input_decom = tf.placeholder(tf.float32, [None, None, None, 3], name='input_decom')
 # the input of illumination adjustment net
 input_low_i = tf.placeholder(tf.float32, [None, None, None, 1], name='input_low_i')
+input_low_i_ratio = tf.placeholder(tf.float32, [None, None, None, 1], name='input_low_i_ratio')
 input_high_i = tf.placeholder(tf.float32, [None, None, None, 1], name='input_high_i')
 
 [R_decom, I_decom] = DecomNet(input_decom)
@@ -90,13 +91,12 @@ input_high_i = tf.placeholder(tf.float32, [None, None, None, 1], name='input_hig
 decom_output_R = R_decom
 decom_output_I = I_decom
 # the output of illumination adjustment net
-output_i, A = Illumination_adjust_curve_net(input_low_i)
+output_i, A = Illumination_adjust_curve_net_ratio(input_low_i,input_low_i_ratio)
 
 loss_grad = grad_loss(output_i, input_high_i)
 loss_square = tf.reduce_mean(tf.square(output_i - input_high_i))
-# loss_tv = tf.reduce_mean(tf.image.total_variation(A))
-# loss_adjust = loss_square + loss_grad + 10 * loss_tv
-loss_adjust = loss_square + loss_grad
+loss_tv = tf.reduce_mean(tf.image.total_variation(A))
+loss_adjust = loss_square + 0.1 * loss_grad + loss_tv
 
 lr = tf.placeholder(tf.float32, name='learning_rate')
 
@@ -140,28 +140,33 @@ else:
 
 decomposed_low_i_data_480 = []
 decomposed_high_i_data_480 = []
+decomposed_low_r_data_480 = []
+decomposed_high_r_data_480 = []
 for idx in range(len(train_illumin_low_data)):
     input_low = np.expand_dims(train_illumin_low_data[idx], axis=0)
     RR, II = sess.run([decom_output_R, decom_output_I], feed_dict={input_decom: input_low})
     RR0 = np.squeeze(RR)
     II0 = np.squeeze(II)
-    # print(RR0.shape, II0.shape)
-    # decomposed_high_r_data_480.append(result_1_sq)
     decomposed_low_i_data_480.append(II0)
+    RR0 = np.resize(RR0, (400, 600))
+    decomposed_low_r_data_480.append(RR0)
 for idx in range(len(train_illumin_high_data)):
     input_high = np.expand_dims(train_illumin_high_data[idx], axis=0)
     RR2, II2 = sess.run([decom_output_R, decom_output_I], feed_dict={input_decom: input_high})
     RR02 = np.squeeze(RR2)
     II02 = np.squeeze(II2)
-    # print(RR02.shape, II02.shape)
-    # decomposed_high_r_data_480.append(result_1_sq)
     decomposed_high_i_data_480.append(II02)
+    RR02 = np.resize(RR02, (400, 600))
+    decomposed_high_r_data_480.append(RR02)
 
 eval_adjust_low_i_data = decomposed_low_i_data_480[451:480]
 eval_adjust_high_i_data = decomposed_high_i_data_480[451:480]
 
 train_adjust_low_i_data = decomposed_low_i_data_480[0:450]
 train_adjust_high_i_data = decomposed_high_i_data_480[0:450]
+
+train_adjust_low_r_data = decomposed_low_r_data_480[0:450]
+train_adjust_high_r_data = decomposed_high_r_data_480[0:450]
 
 print('[*] Number of training data: %d' % len(train_adjust_high_i_data))
 
@@ -200,6 +205,8 @@ if not os.path.isdir(sample_dir):
 start_time = time.time()
 image_id = 0
 
+size = 500
+
 for epoch in range(start_epoch, epoch):
     loss_list = []
     for batch_id in range(start_step, numBatch):
@@ -210,44 +217,88 @@ for epoch in range(start_epoch, epoch):
         input_low_i_rand = np.zeros((batch_size, patch_size, patch_size, 1), dtype="float32")
         input_high_i_rand = np.zeros((batch_size, patch_size, patch_size, 1), dtype="float32")
         input_low_i_rand_ratio = np.zeros((batch_size, patch_size, patch_size, 1), dtype="float32")
-        input_high_i_rand_ratio = np.zeros((batch_size, patch_size, patch_size, 1), dtype="float32")
-
+        # input_high_i_rand_ratio = np.zeros((batch_size, patch_size, patch_size, 1), dtype="float32")
+        # m表示全图 还需要修改
+        batch_input_low_m_ratio = np.zeros((batch_size, size, size, 1),
+                                           dtype="float32")
+        batch_input_high_m_ratio = np.zeros((batch_size, size, size, 1), dtype="float32")
+        batch_input_low_m = np.zeros((batch_size, size, size, 1), dtype="float32")
+        batch_input_high_m = np.zeros((batch_size, size, size, 1), dtype="float32")
+        input_low_m_rand_ratio = np.zeros((batch_size, size, size, 1), dtype="float32")
+        # input_high_m_rand_ratio = np.zeros((batch_size, size, size, 1), dtype="float32")
+        input_low_m_rand = np.zeros((batch_size, size, size, 1), dtype="float32")
+        input_high_m_rand = np.zeros((batch_size, size, size, 1), dtype="float32")
+        # r表示反射图
+        batch_input_low_rm = np.zeros((batch_size, size, size, 1), dtype="float32")
+        batch_input_high_rm = np.zeros((batch_size, size, size, 1), dtype="float32")
+        batch_input_low_ri = np.zeros((batch_size, patch_size, patch_size, 1), dtype="float32")
+        batch_input_high_ri = np.zeros((batch_size, patch_size, patch_size, 1), dtype="float32")
         for patch_id in range(batch_size):
             i_low_data = train_adjust_low_i_data[image_id]
             i_low_expand = np.expand_dims(i_low_data, axis=2)
             i_high_data = train_adjust_high_i_data[image_id]
             i_high_expand = np.expand_dims(i_high_data, axis=2)
 
+            ri_low_data = train_adjust_low_r_data[image_id]
+            ri_low_expand = np.expand_dims(ri_low_data, axis=2)
+            ri_high_data = train_adjust_high_r_data[image_id]
+            ri_high_expand = np.expand_dims(ri_high_data, axis=2)
+
+            rm_low_expand = np.resize(ri_low_expand, (size, size, 1))
+            rm_high_expand = np.resize(ri_high_expand, (size, size, 1))
+            m_low_expand = np.resize(i_low_expand, (size, size, 1))
+            m_high_expand = np.resize(i_high_expand, (size, size, 1))
+
             h, w = train_adjust_low_i_data[image_id].shape
             x = random.randint(0, h - patch_size)
             y = random.randint(0, w - patch_size)
             i_low_data_crop = i_low_expand[x: x + patch_size, y: y + patch_size, :]
             i_high_data_crop = i_high_expand[x: x + patch_size, y: y + patch_size, :]
+            ri_low_data_crop = ri_low_expand[x: x + patch_size, y: y + patch_size, :]
+            ri_high_data_crop = ri_high_expand[x: x + patch_size, y: y + patch_size, :]
 
-            rand_mode = np.random.randint(0, 7)
-            batch_input_low_i[patch_id, :, :, :] = data_augmentation(i_low_data_crop, rand_mode)
-            batch_input_high_i[patch_id, :, :, :] = data_augmentation(i_high_data_crop, rand_mode)
+            batch_input_low_i[patch_id, :, :, :] = i_low_data_crop
+            batch_input_high_i[patch_id, :, :, :] = i_high_data_crop
 
-            ratio = np.mean(i_low_data_crop / (i_high_data_crop + 0.0001))
-            # print(ratio)
-            i_low_data_ratio = np.ones([patch_size, patch_size]) * (1 / ratio + 0.0001)
+            batch_input_low_m[patch_id, :, :, :] = m_low_expand
+            batch_input_high_m[patch_id, :, :, :] = m_high_expand
+
+            batch_input_low_ri[patch_id, :, :, :] = ri_low_data_crop
+            batch_input_high_ri[patch_id, :, :, :] = ri_high_data_crop
+
+            batch_input_low_rm[patch_id, :, :, :] = rm_low_expand
+            batch_input_high_rm[patch_id, :, :, :] = rm_high_expand
+
+            ratio = np.mean(i_low_data_crop / (i_high_data_crop + 0.0001))  # 对一张图片局部的高低照度求一次比值差
+            ratio_m = np.mean(m_low_expand / (m_high_expand + 0.0001))
+            # i_low_ratio_expand = batch_input_low_ri[patch_id, :, :, :] * (1 / ratio + 0.0001)
+            # i_high_ratio_expand = batch_input_high_ri[patch_id, :, :, :] * (ratio)
+            i_low_data_ratio = np.ones([patch_size, patch_size]) * (1 / ratio + 0.0001) # 将np.ones可以换成R_grey
             i_low_ratio_expand = np.expand_dims(i_low_data_ratio, axis=2)
-            i_high_data_ratio = np.ones([patch_size, patch_size]) * ratio
+            i_high_data_ratio = np.ones([patch_size, patch_size]) * (ratio)
             i_high_ratio_expand = np.expand_dims(i_high_data_ratio, axis=2)
+            # m_low_data_ratio = np.ones([size, size]) * (1 / ratio_m + 0.0001)
+            # m_low_ratio_expand = np.expand_dims(m_low_data_ratio, axis=2)
+            # m_high_data_ratio = np.ones([size, size]) * (ratio_m)
+            # m_high_ratio_expand = np.expand_dims(m_high_data_ratio, axis=2)
+            m_low_ratio_expand = batch_input_low_rm[patch_id, :, :, :]* (1 / ratio + 0.0001)
+            m_high_ratio_expand = batch_input_high_rm[patch_id, :, :, :]* (ratio)
             batch_input_low_i_ratio[patch_id, :, :, :] = i_low_ratio_expand
             batch_input_high_i_ratio[patch_id, :, :, :] = i_high_ratio_expand
+            batch_input_low_m_ratio[patch_id, :, :, :] = m_low_ratio_expand
+            batch_input_high_m_ratio[patch_id, :, :, :] = m_high_ratio_expand
 
             rand_mode = np.random.randint(0, 2)
             if rand_mode == 1:
                 input_low_i_rand[patch_id, :, :, :] = batch_input_low_i[patch_id, :, :, :]
                 input_high_i_rand[patch_id, :, :, :] = batch_input_high_i[patch_id, :, :, :]
                 input_low_i_rand_ratio[patch_id, :, :, :] = batch_input_low_i_ratio[patch_id, :, :, :]
-                input_high_i_rand_ratio[patch_id, :, :, :] = batch_input_high_i_ratio[patch_id, :, :, :]
+                # input_high_i_rand_ratio[patch_id, :, :, :] = batch_input_high_i_ratio[patch_id, :, :, :]
             else:
                 input_low_i_rand[patch_id, :, :, :] = batch_input_high_i[patch_id, :, :, :]
                 input_high_i_rand[patch_id, :, :, :] = batch_input_low_i[patch_id, :, :, :]
                 input_low_i_rand_ratio[patch_id, :, :, :] = batch_input_high_i_ratio[patch_id, :, :, :]
-                input_high_i_rand_ratio[patch_id, :, :, :] = batch_input_low_i_ratio[patch_id, :, :, :]
+                # input_high_i_rand_ratio[patch_id, :, :, :] = batch_input_low_i_ratio[patch_id, :, :, :]
 
             image_id = (image_id + 1) % len(train_adjust_low_i_data)
 
@@ -255,6 +306,10 @@ for epoch in range(start_epoch, epoch):
                            feed_dict={input_low_i: input_low_i_rand, \
                                       input_high_i: input_high_i_rand, \
                                       lr: learning_rate})
+        _, loss_m = sess.run((train_op, train_loss),  # 通过全局图片进行优化
+                             feed_dict={input_low_i: input_low_m_rand, input_low_i_ratio: input_low_m_rand_ratio, \
+                                        input_high_i: input_high_m_rand, \
+                                        lr: learning_rate})
         loss_list.append(loss)
 
         print("%s Epoch: [%2d] [%4d/%4d] time: %4.4f, loss: %.6f" \
