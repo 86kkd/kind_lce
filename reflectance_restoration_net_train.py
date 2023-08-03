@@ -39,11 +39,11 @@ parser.add_argument('--batch_size', dest='batch_size', type=int, default=8, help
 parser.add_argument('--patch_size', dest='patch_size', type=int, default=48, help='patch size')
 parser.add_argument('--epoch', dest='epoch', type=int, default=2400, help='epoch')
 parser.add_argument('--data', dest='data', type=str,
-                    default='/home/ray/data/LOLdataset_KinD',
+                    default='/media/ray/dataset2/PublicDataset/data_2/ACDC-lowlight',
                     help='batch size')
-parser.add_argument('--log_dir', type=str, default="./experiment/exp1/logs")
-parser.add_argument('--sample_dir', type=str, default='./experiment/exp1/simple')
-parser.add_argument('--checkpoint_dir', type=str, default='./experiment/exp1/checkpoint')
+parser.add_argument('--log_dir', type=str, default="./experiment/exp2/logs")
+parser.add_argument('--sample_dir', type=str, default='./experiment/exp2/simple')
+parser.add_argument('--checkpoint_dir', type=str, default='./experiment/exp2/checkpoint')
 parser.add_argument('--cuda', dest='cuda', type=str, default='0', help='cpu,0,1')
 parser.add_argument('--eval_every_epoch', dest='eval_every_epoch', type=int, default=150, help='eval_every-epoch')
 args = parser.parse_args()
@@ -147,7 +147,7 @@ for idx in range(len(eval_high_data_name)):
     # print(eval_high_im.shape)
 
 # pre_checkpoint_dir = './checkpoint/decom_net_retrain'
-pre_checkpoint_dir = os.path.join(args.checkpoint_dir, "decom_net_retrain")
+pre_checkpoint_dir = os.path.join(args.checkpoint_dir, "decom_net_retrain_acdc")
 ckpt_pre = tf.train.get_checkpoint_state(pre_checkpoint_dir)
 if ckpt_pre:
     print('[*] loaded ' + ckpt_pre.model_checkpoint_path)
@@ -220,7 +220,7 @@ def lr_schedule(epoch):
     return lr
 
 
-sample_dir = os.path.join(args.sample_dir, 'new_restoration_train_results')
+sample_dir = os.path.join(args.sample_dir, 'new_restoration_train_results_acdc')
 if not os.path.isdir(sample_dir):
     os.makedirs(sample_dir)
 train_phase = 'restoration'
@@ -229,7 +229,7 @@ train_op = train_op_restoration
 train_loss = loss_restoration
 saver = saver_restoration
 
-checkpoint_dir = os.path.join(args.checkpoint_dir, 'new_restoration_retrain')
+checkpoint_dir = os.path.join(args.checkpoint_dir, 'new_restoration_retrain_acdc')
 if not os.path.isdir(checkpoint_dir):
     os.makedirs(checkpoint_dir)
 

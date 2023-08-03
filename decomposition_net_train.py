@@ -35,16 +35,17 @@ def load_model(sess, saver, ckpt_dir):
 parser = argparse.ArgumentParser(description='')
 parser.add_argument('--batch_size', dest='batch_size', type=int, default=8, help='number of samples in one batch')
 parser.add_argument('--patch_size', dest='patch_size', type=int, default=48, help='patch size')
-parser.add_argument('--train_data_dir', dest='train_data_dir', default='/home/ray/data/LOLdataset_KinD',
+parser.add_argument('--train_data_dir', dest='train_data_dir',
+                    default='/media/ray/dataset2/PublicDataset/data_2/ACDC-lowlight',
                     help='directory for training inputs')
-parser.add_argument('--sample_dir', type=str, default='./experiment/exp1/simple', help='batch size')
-parser.add_argument('--checkpoint_dir', type=str, default='./experiment/exp1/checkpoint',
+parser.add_argument('--sample_dir', type=str, default='./experiment/exp2/simple', help='batch size')
+parser.add_argument('--checkpoint_dir', type=str, default='./experiment/exp2/checkpoint',
                     help='batch size')
-parser.add_argument('--log_dir', type=str, default="./experiment/exp1/logs")
+parser.add_argument('--log_dir', type=str, default="./experiment/exp2/logs")
 parser.add_argument('--learning_rate', dest='learning_rate', type=int, default=0.0001, help='learn rate')
 parser.add_argument('--epoch', dest='epoch', type=int, default=2500, help='epoch')
 parser.add_argument('--eval_every_epoch', dest='eval_every_epoch', type=int, default=500, help='eval_every-epoch')
-parser.add_argument('--cuda', dest='cuda', type=str, default='1', help='cpu,0,1')
+parser.add_argument('--cuda', dest='cuda', type=str, default='0', help='cpu,0,1')
 args = parser.parse_args()
 
 os.makedirs(args.log_dir, exist_ok=True)
@@ -153,7 +154,7 @@ for idx in range(len(eval_decom_low_data_name)):
     eval_high_im = load_images(eval_decom_high_data_name[idx])
     eval_decom_high_data.append(eval_high_im)
 
-sample_dir = os.path.join(args.sample_dir, 'decom_net_train_result')
+sample_dir = os.path.join(args.sample_dir, 'decom_net_train_result_acdc')
 if not os.path.isdir(sample_dir):
     os.makedirs(sample_dir)
 
@@ -163,7 +164,7 @@ train_op = train_op_Decom
 train_loss = loss_Decom
 saver = saver_Decom
 
-checkpoint_dir = os.path.join(args.checkpoint_dir, 'decom_net_retrain')
+checkpoint_dir = os.path.join(args.checkpoint_dir, 'decom_net_retrain_acdc')
 if not os.path.isdir(checkpoint_dir):
     os.makedirs(checkpoint_dir)
 

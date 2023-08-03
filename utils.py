@@ -131,6 +131,7 @@ def data_augmentation(image, mode):
 
 def load_images(file):
     im = Image.open(file)
+    im = im.resize((600, 400), Image.ANTIALIAS)
     img = np.array(im, dtype="float32") / 255.0
     img_max = np.max(img)
     img_min = np.min(img)

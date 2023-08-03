@@ -19,17 +19,27 @@ parser = argparse.ArgumentParser(description='')
 
 parser.add_argument('--save_dir', dest='save_dir', default='./experiment/exp2/test_result/',
                     help='directory for testing outputs')
-parser.add_argument('--test_dir', dest='test_dir', default='/home/ray/data/LOLdataset/eval15',
+parser.add_argument('--test_dir', dest='test_dir', default='./simple',
                     help='directory for testing inputs')
 parser.add_argument("--checkpoint_dir", default='./experiment/exp2/checkpoint')
 parser.add_argument('--adjustment', dest='adjustment', default=True, help='whether to adjust illumination')
 parser.add_argument('--ratio', dest='ratio', default=10.0, help='ratio for illumination adjustment')
-parser.add_argument("--cuda", default="1")
+parser.add_argument("--cuda", default="0")
 
 args = parser.parse_args()
 os.environ['CUDA_VISIBLE_DEVICES'] = args.cuda
 
-illmin_name = "illumination_adjust_curve_net"
+def KinD_LCE(input_decom, input_low_r, input_low_i, input_low_i_ratio, training):
+    [R_decom, I_decom] = DecomNet(input_decom)
+    decom_output_R = R_decom
+    decom_output_I = I_decom
+    output_i, A = Illumination_adjust_curve_net_ratio(input_low_i, input_low_i_ratio)
+    output_r = Restoration_net(input_low_r, input_low_i, training)
+    
+    return output_i, output_r, decom_output_R, decom_output_I
+
+
+illmin_name = "illumination_adjust_curve_net_global_rm_del_rotate"
 
 sess = tf.Session()
 
@@ -39,12 +49,8 @@ input_low_r = tf.placeholder(tf.float32, [None, None, None, 3], name='input_low_
 input_low_i = tf.placeholder(tf.float32, [None, None, None, 1], name='input_low_i')
 input_low_i_ratio = tf.placeholder(tf.float32, [None, None, None, 1], name='input_low_i_ratio')
 
-[R_decom, I_decom] = DecomNet(input_decom)
-decom_output_R = R_decom
-decom_output_I = I_decom
 # output_i, A = Illumination_adjust_curve_net(input_low_i)
-output_i, A = Illumination_adjust_curve_net(input_low_i)
-output_r = Restoration_net(input_low_r, input_low_i, training)
+output_i, output_r, decom_output_R, decom_output_I = KinD_LCE(input_decom, input_low_r, input_low_i, input_low_i_ratio, training)
 
 illmin_i = output_i
 restoration_r = output_r
@@ -127,47 +133,12 @@ sample_dir = os.path.join(args.save_dir, illmin_name)
 if not os.path.isdir(sample_dir):
     os.makedirs(sample_dir)
 
-# print("Start evalating!")
-# start_time = time.time()
-# for idx in range(len(eval_low_data)):
-#     # print(idx)
-#     name = eval_img_name[idx]
-#     print('Evaluate image %s' % name)
-#     input_low = eval_low_data[idx]
-#     input_low_eval = np.expand_dims(input_low, axis=0)
-#     input_high = eval_high_data[idx]
-#     input_high_eval = np.expand_dims(input_high, axis=0)
-#     h, w, _ = input_low.shape
-#
-#     decom_r_low, decom_i_low = sess.run([decom_output_R, decom_output_I], feed_dict={input_decom: input_low_eval})
-#     decom_r_high, decom_i_high = sess.run([decom_output_R, decom_output_I], feed_dict={input_decom: input_high_eval})
-#
-#     restoration_r = sess.run(output_r, feed_dict={input_low_r: decom_r_low, input_low_i: decom_i_low})
-#
-#     ratio = np.mean(decom_i_high / (decom_i_low + 0.0001))
-#     ratio2 = np.mean(decom_r_high / (restoration_r + 0.0001))
-#     if ratio2 < 1.1:
-#         i_low_data_ratio = np.ones([h, w]) * ratio
-#     else:
-#         i_low_data_ratio = np.ones([h, w]) * (ratio + ratio2)
-#
-#     i_low_ratio_expand = np.expand_dims(i_low_data_ratio, axis=2)
-#     i_low_ratio_expand2 = np.expand_dims(i_low_ratio_expand, axis=0)
-#
-#     adjust_i = sess.run(output_i, feed_dict={input_low_i: decom_i_low})
-#     fusion = sess.run(output, feed_dict={illmin_i: adjust_i, restoration_r: restoration_r, input_decom: input_low_eval})
-#     print(fusion, fusion.shape)
-#     # fusion = restoration_r * adjust_i
-#
-#     save_images(os.path.join(sample_dir, '%s_kindle_v2.png' % name), fusion)
-    # save_images(os.path.join(sample_dir, '%s_decom_i_low.png' % (name)), decom_i_low)
-    # save_images(os.path.join(sample_dir, '%s_adjust_i_%f.png' % (name, (ratio+ratio2)) ), adjust_i)
-    # save_images(os.path.join(sample_dir, '%s_denoise_r.png' % (name)), restoration_r)
 
 print("Start evalating!")
 start_time = time.time()
 for idx in tqdm(range(len(eval_low_data))):
     # print(idx)
+    tt1 = time.time()
     name = eval_img_name[idx]
     input_low = eval_low_data[idx]
     input_low_eval = np.expand_dims(input_low, axis=0)
@@ -180,8 +151,10 @@ for idx in tqdm(range(len(eval_low_data))):
     i_low_data_ratio = np.ones([h, w]) * ratio
     i_low_ratio_expand = np.expand_dims(i_low_data_ratio, axis=2)
     i_low_ratio_expand2 = np.expand_dims(i_low_ratio_expand, axis=0)
+    t1 = time.time()
     adjust_i = sess.run(output_i, feed_dict={input_low_i: decom_i_low, input_low_i_ratio: i_low_ratio_expand2})
-
+    t2 = time.time()
+    print(f"\033[94minfer time:{t2-t1:.3f}s\033[0m")
     # The restoration result can find more details from very dark regions, however, it will restore the very dark regions
     # with gray colors, we use the following operator to alleviate this weakness.
     decom_r_sq = np.squeeze(decom_r_low)
@@ -192,6 +165,8 @@ for idx in tqdm(range(len(eval_low_data))):
     low_i_expand_3 = np.expand_dims(low_i_expand_0, axis=3)
     result_denoise = restoration_r * low_i_expand_3
     fusion4 = result_denoise * adjust_i
+    tt2 = time.time()
+    print(f"\033[96mtotal iteration:{tt2-tt1:.3f}\033[0m")
 
     # if args.adjustment:
     #     fusion = decom_i_low * input_low_eval + (1 - decom_i_low) * fusion4
@@ -204,4 +179,16 @@ for idx in tqdm(range(len(eval_low_data))):
     # save_images(os.path.join(sample_dir, '%s_fusion.png' % name), fusion4)
     # save_images(os.path.join(sample_dir, '%s_decom_i_low.png' % name), decom_i_low)
     # save_images(os.path.join(sample_dir, '%s_decom_r_low.png' % name), decom_r_low)
+saver = tf.train.Saver()
+save_path = saver.save(sess, "./model/model.ckpt")
 
+# Convert to SavedModel
+builder = tf.saved_model.builder.SavedModelBuilder("./model/saved_model")
+builder.add_meta_graph_and_variables(sess,
+                                      [tf.saved_model.tag_constants.SERVING],
+                                      signature_def_map= {
+                                          "serving_default": tf.saved_model.signature_def_utils.predict_signature_def(
+                                              inputs= {"input_decom": input_decom, "input_low_r": input_low_r, "input_low_i": input_low_i, "input_low_i_ratio": input_low_i_ratio},
+                                              outputs= {"output_i": output_i, "output_r": output_r})
+                                      })
+builder.save() 

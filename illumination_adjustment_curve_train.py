@@ -55,7 +55,7 @@ def load_model(sess, saver, ckpt_dir):
 parser = argparse.ArgumentParser(description='illumination_adjustment_net need parameter')
 parser.add_argument('--batch_size', dest='batch_size', type=int, default=8, help='batch size')
 parser.add_argument('--patch_size', dest='patch_size', type=int, default=48, help='batch size')
-parser.add_argument('--data', type=str, default='/home/ray/data/LOLdataset_KinD', help='batch size')
+parser.add_argument('--data', type=str, default='/media/ray/dataset2/PublicDataset/data_2/ACDC-lowlight', help='batch size')
 parser.add_argument('--sample_dir', type=str, default='./experiment/exp2/simple', help='batch size')
 parser.add_argument('--checkpoint_dir', type=str, default='./experiment/exp2/checkpoint')
 parser.add_argument('--log_dir', type=str, default="./experiment/exp2/logs")

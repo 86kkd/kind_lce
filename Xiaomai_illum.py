@@ -55,7 +55,7 @@ def load_model(sess, saver, ckpt_dir):
 parser = argparse.ArgumentParser(description='illumination_adjustment_net need parameter')
 parser.add_argument('--batch_size', dest='batch_size', type=int, default=10, help='batch size')
 parser.add_argument('--patch_size', dest='patch_size', type=int, default=48, help='batch size')
-parser.add_argument('--data', type=str, default='/home/ray/data/LOLdataset_KinD', help='batch size')
+parser.add_argument('--data', type=str, default='/media/ray/dataset2/PublicDataset/data_2/LOLdataset_KinD', help='batch size')
 parser.add_argument('--sample_dir', type=str, default='./experiment/exp2/simple', help='batch size')
 parser.add_argument('--checkpoint_dir', type=str, default='./experiment/exp2/checkpoint')
 parser.add_argument('--log_dir', type=str, default="./experiment/exp2/logs")
@@ -65,7 +65,7 @@ parser.add_argument('--eval_every_epoch', dest='eval_every_epoch', type=int, def
 parser.add_argument('--cuda', dest='cuda', type=str, default='0', help='cpu,0,1')
 args = parser.parse_args()
 
-name = "illumination_adjust_curve_net_global_rm_del_rotate_v2"
+name = "illumination_adjust_curve_net_global_rm_del_rotate_acdc"
 os.makedirs(args.log_dir, exist_ok=True)
 writer = SummaryWriter(logdir=os.path.join(args.log_dir, name))
 

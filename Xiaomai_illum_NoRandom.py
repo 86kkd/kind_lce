@@ -55,17 +55,18 @@ def load_model(sess, saver, ckpt_dir):
 parser = argparse.ArgumentParser(description='illumination_adjustment_net need parameter')
 parser.add_argument('--batch_size', dest='batch_size', type=int, default=10, help='batch size')
 parser.add_argument('--patch_size', dest='patch_size', type=int, default=48, help='batch size')
-parser.add_argument('--data', type=str, default='/home/ray/data/LOLdataset_KinD', help='batch size')
+parser.add_argument('--data', type=str, default='/media/ray/dataset2/PublicDataset/data_2/ACDC-lowlight',
+                    help='batch size')
 parser.add_argument('--sample_dir', type=str, default='./experiment/exp2/simple', help='batch size')
 parser.add_argument('--checkpoint_dir', type=str, default='./experiment/exp2/checkpoint')
 parser.add_argument('--log_dir', type=str, default="./experiment/exp2/logs")
 parser.add_argument('--learning_rate', dest='learning_rate', type=int, default=0.0001, help='learn rate')
 parser.add_argument('--epoch', dest='epoch', type=int, default=2000, help='epoch')
 parser.add_argument('--eval_every_epoch', dest='eval_every_epoch', type=int, default=200, help='eval_every-epoch')
-parser.add_argument('--cuda', dest='cuda', type=str, default='1', help='cpu,0,1')
+parser.add_argument('--cuda', dest='cuda', type=str, default='0', help='cpu,0,1')
 args = parser.parse_args()
 
-name = "illumination_adjust_curve_net_global_rm_del_rotate_no_random"
+name = "illumination_adjust_curve_net_global_rm_del_rotate_no_random_acdc"
 os.makedirs(args.log_dir, exist_ok=True)
 writer = SummaryWriter(logdir=os.path.join(args.log_dir, name))
 
@@ -76,7 +77,7 @@ data = args.data
 learning_rate = args.learning_rate
 epoch = args.epoch
 eval_every_epoch = args.eval_every_epoch
-decom_net_ckpt_path = os.path.join(args.checkpoint_dir, "decom_net_retrain")
+decom_net_ckpt_path = os.path.join(args.checkpoint_dir, "decom_net_retrain_acdc")
 
 sess = tf.Session()
 # the input of decomposition net
@@ -91,7 +92,7 @@ input_high_i = tf.placeholder(tf.float32, [None, None, None, 1], name='input_hig
 decom_output_R = R_decom
 decom_output_I = I_decom
 # the output of illumination adjustment net
-output_i, A = Illumination_adjust_curve_net_ratio(input_low_i,input_low_i_ratio)
+output_i, A = Illumination_adjust_curve_net_ratio(input_low_i, input_low_i_ratio)
 
 loss_grad = grad_loss(output_i, input_high_i)
 loss_square = tf.reduce_mean(tf.square(output_i - input_high_i))
@@ -159,14 +160,17 @@ for idx in range(len(train_illumin_high_data)):
     RR02 = np.resize(RR02, (400, 600))
     decomposed_high_r_data_480.append(RR02)
 
-eval_adjust_low_i_data = decomposed_low_i_data_480[451:480]
-eval_adjust_high_i_data = decomposed_high_i_data_480[451:480]
+train_eval_divider = 371
+total_num = 400
 
-train_adjust_low_i_data = decomposed_low_i_data_480[0:450]
-train_adjust_high_i_data = decomposed_high_i_data_480[0:450]
+eval_adjust_low_i_data = decomposed_low_i_data_480[train_eval_divider:total_num]
+eval_adjust_high_i_data = decomposed_high_i_data_480[train_eval_divider:total_num]
 
-train_adjust_low_r_data = decomposed_low_r_data_480[0:450]
-train_adjust_high_r_data = decomposed_high_r_data_480[0:450]
+train_adjust_low_i_data = decomposed_low_i_data_480[0:train_eval_divider - 1]
+train_adjust_high_i_data = decomposed_high_i_data_480[0:train_eval_divider - 1]
+
+train_adjust_low_r_data = decomposed_low_r_data_480[0:train_eval_divider - 1]
+train_adjust_high_r_data = decomposed_high_r_data_480[0:train_eval_divider - 1]
 
 print('[*] Number of training data: %d' % len(train_adjust_high_i_data))
 
@@ -273,7 +277,7 @@ for epoch in range(start_epoch, epoch):
             ratio_m = np.mean(m_low_expand / (m_high_expand + 0.0001))
             # i_low_ratio_expand = batch_input_low_ri[patch_id, :, :, :] * (1 / ratio + 0.0001)
             # i_high_ratio_expand = batch_input_high_ri[patch_id, :, :, :] * (ratio)
-            i_low_data_ratio = np.ones([patch_size, patch_size]) * (1 / ratio + 0.0001) # 将np.ones可以换成R_grey
+            i_low_data_ratio = np.ones([patch_size, patch_size]) * (1 / ratio + 0.0001)  # 将np.ones可以换成R_grey
             i_low_ratio_expand = np.expand_dims(i_low_data_ratio, axis=2)
             i_high_data_ratio = np.ones([patch_size, patch_size]) * (ratio)
             i_high_ratio_expand = np.expand_dims(i_high_data_ratio, axis=2)
@@ -281,8 +285,8 @@ for epoch in range(start_epoch, epoch):
             # m_low_ratio_expand = np.expand_dims(m_low_data_ratio, axis=2)
             # m_high_data_ratio = np.ones([size, size]) * (ratio_m)
             # m_high_ratio_expand = np.expand_dims(m_high_data_ratio, axis=2)
-            m_low_ratio_expand = batch_input_low_rm[patch_id, :, :, :]* (1 / ratio + 0.0001)
-            m_high_ratio_expand = batch_input_high_rm[patch_id, :, :, :]* (ratio)
+            m_low_ratio_expand = batch_input_low_rm[patch_id, :, :, :] * (1 / ratio + 0.0001)
+            m_high_ratio_expand = batch_input_high_rm[patch_id, :, :, :] * (ratio)
             batch_input_low_i_ratio[patch_id, :, :, :] = i_low_ratio_expand
             batch_input_high_i_ratio[patch_id, :, :, :] = i_high_ratio_expand
             batch_input_low_m_ratio[patch_id, :, :, :] = m_low_ratio_expand
