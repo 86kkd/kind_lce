@@ -38,24 +38,8 @@ def KinD_LCE(input_decom, input_low_r, input_low_i, input_low_i_ratio, training)
     
     return output_i, output_r, decom_output_R, decom_output_I
 
-class LCE(tf.Module):
-    def __init__(self, decom_net, i_enhance_net, denoise_net):
-        super(LCE, self).__init__()
-        self.decom_net = decom_net
-        self.i_enhance_net = i_enhance_net
-        self.denoise_net = denoise_net
 
-    @tf.function(input_signature=[
-        tf.TensorSpec(shape=[None, None, None, 3], dtype=tf.float32),
-        tf.TensorSpec(shape=[None, None, None, 1], dtype=tf.float32)
-    ])
-    def __call__(self, input_low, ratio):
-        decom_r_low, decom_i_low = self.decom_net(input_low)
-        restoration_r = self.denoise_net(decom_r_low, decom_i_low)
-        i_low_data_ratio = tf.ones_like(input_low) * ratio
-        i_low_ratio_expand = tf.expand_dims(i_low_data_ratio, axis=-1)
-        adjust_i = self.i_enhance_net(decom_i_low, i_low_ratio_expand)
-        return decom_r_low, adjust_i, restoration_r
+
     
 def main():
     illmin_name = "illumination_adjust_curve_net_global_rm_del_rotate"
@@ -155,7 +139,7 @@ def main():
 
     print("Start evalating!")
     # 创建模型
-    model = LCE([decom_output_R, decom_output_I], output_r, output_i)
+
     start_time = time.time()
     for idx in tqdm(range(len(eval_low_data))):
         # print(idx)
@@ -165,19 +149,22 @@ def main():
         input_low = eval_low_data[idx]
         input_low_eval = np.expand_dims(input_low, axis=0)
         h, w, _ = input_low.shape
-
-    # decom_r_low, decom_i_low = sess.run([decom_output_R, decom_output_I], feed_dict={input_decom: input_low_eval})
-    # restoration_r = sess.run(output_r, feed_dict={input_low_r: decom_r_low, input_low_i: decom_i_low, training: False})
-    # change the ratio to get different exposure level, the value can be 0-5.0
         ratio = float(args.ratio)
-    # i_low_data_ratio = np.ones([h, w]) * ratio
-    # i_low_ratio_expand = np.expand_dims(i_low_data_ratio, axis=2)
-    # i_low_ratio_expand2 = np.expand_dims(i_low_ratio_expand, axis=0)
-    # t1 = time.time()
-    # adjust_i = sess.run(output_i, feed_dict={input_low_i: decom_i_low, input_low_i_ratio: i_low_ratio_expand2})
-    # t2 = time.time()
-    # print(f"\033[94minfer time:{t2-t1:.3f}s\033[0m")
-        decom_r_low, adjust_i, restoration_r = model(input_low, ratio)
+
+        decom_r_low, decom_i_low = sess.run([decom_output_R, decom_output_I], feed_dict={input_decom: input_low_eval})
+        restoration_r = sess.run(output_r, feed_dict={input_low_r: decom_r_low, input_low_i: decom_i_low, training: False})
+        # change the ratio to get different exposure level, the value can be 0-5.0
+            
+        i_low_data_ratio = np.ones([h, w]) * ratio
+        i_low_ratio_expand = np.expand_dims(i_low_data_ratio, axis=2)
+        i_low_ratio_expand2 = np.expand_dims(i_low_ratio_expand, axis=0)
+        t1 = time.time()
+        adjust_i = sess.run(output_i, feed_dict={input_low_i: decom_i_low, input_low_i_ratio: i_low_ratio_expand2})
+        t2 = time.time()
+        print(f"\033[94minfer time:{t2-t1:.3f}s\033[0m")
+        
+
+        
         # The restoration result can find more details from very dark regions, however, it will restore the very dark regions
         # with gray colors, we use the following operator to alleviate this weakness.
         decom_r_sq = np.squeeze(decom_r_low)
@@ -192,15 +179,6 @@ def main():
         tt2 = time.time()
         print(f"\033[96mtotal iteration:{tt2-tt1:.3f}\033[0m")
         save_images(os.path.join(sample_dir, '%s_KinD_plus.png' % name), fusion4)
-
-    # 保存模型
-    tf.saved_model.save(model, "path_to_save_model")
-
-    # 加载模型
-    loaded_model = tf.saved_model.load("path_to_save_model")
-
-    # 使用加载的模型进行预测
-    adjust_i, restoration_r = loaded_model(input_low, ratio)
 
 if __name__ == "__main__":
     main()

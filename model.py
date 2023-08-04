@@ -6,6 +6,8 @@ tf.disable_v2_behavior()
 from msia_BN_3_M import *
 
 
+
+
 def lrelu(x, trainbable=None):
     return tf.maximum(x * 0.2, x)
 
