@@ -8,8 +8,16 @@ from glob import glob
 import scipy.ndimage
 from PIL import Image
 import time
+from utils import save_images
+import argparse
 
 tf.disable_v2_behavior()
+
+parser = argparse.ArgumentParser(description='')
+parser.add_argument("--save_samples", action = "store_true")
+args = parser.parse_args()
+
+
 
 # Assume the model functions are already defined
 from model import DecomNet, Illumination_adjust_curve_net_ratio, Restoration_net
@@ -68,19 +76,12 @@ with graph.as_default():
     
     adjust_i, A = Illumination_adjust_curve_net_ratio(decom_i_low, i_low_ratio_expand2)
     
-    print("Shape of decom_r_low: ", decom_r_low.get_shape())
     decom_r_sq = tf.squeeze(decom_r_low)
-    print("Shape of decom_r_sq: ", decom_r_sq.get_shape())
     r_gray = tf.image.rgb_to_grayscale(decom_r_sq)
-    print("Shape of r_gray: ", r_gray.get_shape())
     r_gray = r_gray[tf.newaxis, :, :, :]
     r_gray_gaussian = gaussian_blur(r_gray, kernel_size=7, sigma=3.0)
-    print("Shape of r_gray_gaussian: ", r_gray_gaussian.get_shape())
     low_i = tf.minimum(tf.sqrt(r_gray_gaussian * 2), 1)
     low_i_expand_0 = tf.expand_dims(low_i, axis=0)
-    # low_i_expand_3 = tf.expand_dims(low_i, axis=3)
-    print("Shape of restoration_r: ", restoration_r.get_shape())
-    print("Shape of low_i_expand_0: ", low_i_expand_0.get_shape())
     result_denoise = restoration_r * low_i_expand_0
     fusion4 = result_denoise * adjust_i
     
@@ -129,20 +130,23 @@ with graph.as_default():
         else:
             print("[*] No restoration net pretrained model!")
         
-        eval_low_data, eval_img_name = load_data(test_dit)   
-        for idx in range(len(eval_low_data)):
-            name = eval_img_name[idx]
-            input_low = eval_low_data[idx]
-            input_low_eval = np.expand_dims(input_low, axis=0)
-            ratio = float(10.0)
-            
-            feed_dict = {
-                input_decom: input_low_eval,
-                input_low_i_ratio: ratio,
-                # ... 添加其他的 feed_dict 值
-            }
-            t1 = time.time()
-            output = sess.run(fusion4, feed_dict=feed_dict)
-            t2 = time.time()
-            print(f"\033[94minfer time:{t2-t1:.3f}s\033[0m")
-        # saver.save(sess, "model/model.ckpt")
+        if args.save_samples:
+            eval_low_data, eval_img_name = load_data(test_dit) 
+            for idx in range(len(eval_low_data)):
+                name = eval_img_name[idx]
+                input_low = eval_low_data[idx]
+                input_low_eval = np.expand_dims(input_low, axis=0)
+                ratio = float(10.0)
+                
+                feed_dict = {
+                    input_decom: input_low_eval,
+                    input_low_i_ratio: ratio,
+                    # ... 添加其他的 feed_dict 值
+                }
+                t1 = time.time()
+                output = sess.run(fusion4, feed_dict=feed_dict)
+                t2 = time.time()
+                print(f"\033[94minfer time:{t2-t1:.3f}s\033[0m")
+                save_images(os.path.join("sample_results", '%s_KinD_plus.png' % name), output)
+        saver.save(sess, "model/model.ckpt")
+        print("\033[92msave success\033[0m")
