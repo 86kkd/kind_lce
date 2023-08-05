@@ -151,14 +151,15 @@ def main():
         h, w, _ = input_low.shape
         ratio = float(args.ratio)
 
+        t1 = time.time()
         decom_r_low, decom_i_low = sess.run([decom_output_R, decom_output_I], feed_dict={input_decom: input_low_eval})
         restoration_r = sess.run(output_r, feed_dict={input_low_r: decom_r_low, input_low_i: decom_i_low, training: False})
+        
         # change the ratio to get different exposure level, the value can be 0-5.0
-            
         i_low_data_ratio = np.ones([h, w]) * ratio
         i_low_ratio_expand = np.expand_dims(i_low_data_ratio, axis=2)
         i_low_ratio_expand2 = np.expand_dims(i_low_ratio_expand, axis=0)
-        t1 = time.time()
+        
         adjust_i = sess.run(output_i, feed_dict={input_low_i: decom_i_low, input_low_i_ratio: i_low_ratio_expand2})
         t2 = time.time()
         print(f"\033[94minfer time:{t2-t1:.3f}s\033[0m")
