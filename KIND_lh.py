@@ -148,5 +148,15 @@ with graph.as_default():
                 t2 = time.time()
                 print(f"\033[94minfer time:{t2-t1:.3f}s\033[0m")
                 save_images(os.path.join("sample_results", '%s_KinD_plus.png' % name), output)
+        # Convert to SavedModel
+        builder = tf.saved_model.builder.SavedModelBuilder("./model/saved_model")
+        builder.add_meta_graph_and_variables(sess,
+                                            [tf.saved_model.tag_constants.SERVING],
+                                            signature_def_map= {
+                                                "serving_default": tf.saved_model.signature_def_utils.predict_signature_def(
+                                                    inputs= {"input_decom": input_decom, "input_low_i_ratio": input_low_i_ratio},
+                                                    outputs= {"fusion4": fusion4})
+                                            })
+        builder.save() 
         saver.save(sess, "model/model.ckpt")
         print("\033[92msave success\033[0m")
