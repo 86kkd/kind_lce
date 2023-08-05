@@ -164,18 +164,20 @@ def main():
         t2 = time.time()
         print(f"\033[94minfer time:{t2-t1:.3f}s\033[0m")
         
-
+  
         
         # The restoration result can find more details from very dark regions, however, it will restore the very dark regions
         # with gray colors, we use the following operator to alleviate this weakness.
+        print("Shape of decom_r_low: ", decom_r_low.shape)
         decom_r_sq = np.squeeze(decom_r_low)
+        print("Shape of decom_r_sq: ", decom_r_sq.shape)
         r_gray = color.rgb2gray(decom_r_sq)
         r_gray_gaussion = filters.gaussian(r_gray, 3)
         low_i = np.minimum((r_gray_gaussion * 2) ** 0.5, 1)
         low_i_expand_0 = np.expand_dims(low_i, axis=0)
         low_i_expand_3 = np.expand_dims(low_i_expand_0, axis=3)
-        print("Shape of restoration_r: ", restoration_r.get_shape())
-        print("Shape of low_i_expand_3: ", low_i_expand_3.get_shape())
+        print("Shape of restoration_r: ", restoration_r.shape)
+        print("Shape of low_i_expand_3: ", low_i_expand_3.shape)
         result_denoise = restoration_r * low_i_expand_3
         fusion4 = result_denoise * adjust_i
 

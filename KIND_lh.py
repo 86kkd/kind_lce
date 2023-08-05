@@ -37,23 +37,24 @@ def load_data(test_dir):
         eval_low_data.append(eval_low_im)
     return eval_low_data, eval_img_name
 
-def gaussian_filter(input_img, sigma):
-    output_img = scipy.ndimage.gaussian_filter(input_img, sigma=sigma)
-    return output_img.astype(np.float32)
+def gaussian_kernel(kernel_size, sigma):
+    """Creates a 2D Gaussian kernel."""
+    x = tf.linspace(-3.0, 3.0, kernel_size)
+    z = (1.0 / (sigma * tf.sqrt(2.0 * np.pi))) * tf.exp(tf.negative(tf.pow(x, 2.0) / (2.0 * tf.pow(sigma, 2.0))))
+    z_2d = tf.matmul(tf.reshape(z, [kernel_size, 1]), tf.reshape(z, [1, kernel_size]))
+    return z_2d / tf.reduce_sum(z_2d)
 
-def tf_gaussian_filter(input_img, sigma):
-    output_img = tf.py_func(
-        gaussian_filter,
-        [input_img, sigma],
-        tf.float32,
-        name='gaussian_filter'
-    )
-    return output_img
+def gaussian_blur(img, kernel_size, sigma):
+    """Applies Gaussian blur to an image tensor."""
+    gaussian_filter = gaussian_kernel(kernel_size, sigma)
+    gaussian_filter = gaussian_filter[:, :, tf.newaxis, tf.newaxis]
+    return tf.nn.depthwise_conv2d(img, gaussian_filter, [1, 1, 1, 1], padding='SAME')
+
 # 定义新计算图
 graph = tf.Graph()
 with graph.as_default():
     # 占位符
-    input_decom = tf.placeholder(tf.float32, [None, None, None, 3], name='input_decom')
+    input_decom = tf.placeholder(tf.float32, [1, 400, 600, 3], name='input_decom')
     input_low_i_ratio = tf.placeholder(tf.float32, name='ratio')
 
     # 模型结构
@@ -67,14 +68,20 @@ with graph.as_default():
     
     adjust_i, A = Illumination_adjust_curve_net_ratio(decom_i_low, i_low_ratio_expand2)
     
+    print("Shape of decom_r_low: ", decom_r_low.get_shape())
     decom_r_sq = tf.squeeze(decom_r_low)
+    print("Shape of decom_r_sq: ", decom_r_sq.get_shape())
     r_gray = tf.image.rgb_to_grayscale(decom_r_sq)
-    r_gray_gaussian = tf_gaussian_filter(r_gray, 3)
+    print("Shape of r_gray: ", r_gray.get_shape())
+    r_gray = r_gray[tf.newaxis, :, :, :]
+    r_gray_gaussian = gaussian_blur(r_gray, kernel_size=7, sigma=3.0)
+    print("Shape of r_gray_gaussian: ", r_gray_gaussian.get_shape())
     low_i = tf.minimum(tf.sqrt(r_gray_gaussian * 2), 1)
-    low_i_expand_3 = tf.expand_dims(low_i, axis=3)
+    low_i_expand_0 = tf.expand_dims(low_i, axis=0)
+    # low_i_expand_3 = tf.expand_dims(low_i, axis=3)
     print("Shape of restoration_r: ", restoration_r.get_shape())
-    print("Shape of low_i_expand_3: ", low_i_expand_3.get_shape())
-    result_denoise = restoration_r * low_i_expand_3
+    print("Shape of low_i_expand_0: ", low_i_expand_0.get_shape())
+    result_denoise = restoration_r * low_i_expand_0
     fusion4 = result_denoise * adjust_i
     
     saver = tf.train.Saver()
