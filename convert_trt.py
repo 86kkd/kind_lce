@@ -17,16 +17,3 @@ converter.convert()
 converter.save("./model/saved_model_trt")
 print("\033[92msave model success\033[0m")
 
-model = tf.saved_model.load("./model/saved_model_trt")
-
-# Define the inference function
-infer = model.signatures["serving_default"]
-
-# Assuming your model takes an image as input, prepare a dummy input
-# Note: You'll need to adjust the shape and dtype to match your model's expected input.
-dummy_input = np.random.randn(1, 400, 600, 3).astype(np.float32)
-
-# Run inference
-output = infer(tf.constant(dummy_input))
-
-print(output)
