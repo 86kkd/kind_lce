@@ -158,5 +158,4 @@ with graph.as_default():
                                                     outputs= {"fusion4": fusion4})
                                             })
         builder.save() 
-        saver.save(sess, "model/model.ckpt")
         print("\033[92msave success\033[0m")
